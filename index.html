@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscador de Películas con Vue.js</title>
+    <!-- Estilos mejorados -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #1a73e8;
+        }
+
+        .search-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        input[type="text"] {
+            flex-grow: 1;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+
+        input[type="text"]:focus {
+            border-color: #1a73e8;
+            box-shadow: 0 0 5px rgba(26, 115, 232, 0.3);
+        }
+
+        button {
+            padding: 12px 25px;
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+
+        button:hover {
+            background-color: #1557b0;
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .movie-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 25px;
+        }
+
+        .movie-card {
+            background: #fff;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .movie-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .movie-card img {
+            width: 100%;
+            height: 280px;
+            object-fit: cover;
+        }
+
+        .movie-card h3 {
+            font-size: 16px;
+            margin: 10px;
+            color: #222;
+        }
+
+        .movie-card p {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .pagination {
+            margin-top: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .pagination span {
+            font-size: 16px;
+            color: #555;
+        }
+
+        .error {
+            color: #d93025;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+
+        @media (max-width: 600px) {
+            .search-bar {
+                flex-direction: column;
+            }
+            .movie-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <h1>Buscador de Películas</h1>
+
+        <!-- Barra de búsqueda -->
+        <div class="search-bar">
+            <input 
+                v-model="searchQuery" 
+                @keyup.enter="searchMovies" 
+                type="text" 
+                placeholder="Busca una película..."
+            >
+            <button @click="searchMovies">Buscar</button>
+        </div>
+
+        <!-- Mensaje de error -->
+        <div v-if="error" class="error">{{ error }}</div>
+
+        <!-- Resultados de películas -->
+        <div v-if="movies.length" class="movie-grid">
+            <div v-for="movie in movies" :key="movie.imdbID" class="movie-card">
+                <img :src="movie.Poster !== 'N/A' ? movie.Poster : 'https://via.placeholder.com/150'" alt="Poster">
+                <h3>{{ movie.Title }}</h3>
+                <p>{{ movie.Year }}</p>
+            </div>
+        </div>
+
+        <!-- Paginación -->
+        <div v-if="totalResults > 10" class="pagination">
+            <button 
+                :disabled="currentPage === 1" 
+                @click="changePage(currentPage - 1)"
+            >Anterior</button>
+            <span>Página {{ currentPage }} de {{ totalPages }}</span>
+            <button 
+                :disabled="currentPage === totalPages" 
+                @click="changePage(currentPage + 1)"
+            >Siguiente</button>
+        </div>
+    </div>
+
+    <!-- Incluir Vue.js desde CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Incluir Axios para peticiones HTTP -->
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    searchQuery: '',
+                    movies: [],
+                    currentPage: 1,
+                    totalResults: 0,
+                    error: '',
+                    apiKey: '5c59abb5' // Reemplaza con tu clave de OMDB
+                };
+            },
+            computed: {
+                totalPages() {
+                    return Math.ceil(this.totalResults / 10);
+                }
+            },
+            methods: {
+                async searchMovies() {
+                    if (!this.searchQuery.trim()) return;
+
+                    this.error = '';
+                    try {
+                        const response = await axios.get('https://www.omdbapi.com/', {
+                            params: {
+                                s: this.searchQuery,
+                                page: this.currentPage,
+                                apikey: this.apiKey
+                            }
+                        });
+
+                        if (response.data.Response === 'True') {
+                            this.movies = response.data.Search;
+                            this.totalResults = parseInt(response.data.totalResults);
+                        } else {
+                            this.movies = [];
+                            this.error = response.data.Error;
+                        }
+                    } catch (err) {
+                        this.error = 'Error al buscar películas. Intenta de nuevo.';
+                        console.error(err);
+                    }
+                },
+                changePage(page) {
+                    if (page < 1 || page > this.totalPages) return;
+                    this.currentPage = page;
+                    this.searchMovies();
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
